@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+apps/orchestrator/intent/intent_cache.json
+*.log
+app.log
+uvicorn.err
+test_result.json
