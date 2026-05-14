@@ -69,13 +69,39 @@ async def execute_tasks(state: OrchestratorState) -> dict:
         ))
 
         try:
-            user_content = (
-                f"원래 사용자 요청: {state['user_input']}\n\n"
-                f"이전 태스크 결과:\n{chr(10).join(context_parts) or '없음'}\n\n"
-                f"현재 수행할 태스크:\n제목: {task.title}\n설명: {task.description}"
-            )
-            response = await gateway.complete(settings.executor_model, _EXEC_SYSTEM, user_content)
-            result = response.content
+            if task.agent_id:
+                # 에이전트 라우팅
+                from apps.orchestrator.agents.registry import get_registry
+                from apps.orchestrator.agents.executor import AgentExecutor
+                registry = get_registry()
+                if registry is None:
+                    raise RuntimeError("AgentRegistry가 초기화되지 않았습니다.")
+
+                # agent_tool 미지정 시 해당 에이전트의 첫 번째 툴을 사용
+                tool_name = task.agent_tool
+                if not tool_name:
+                    manifest = registry.get(task.agent_id)
+                    tool_name = manifest.tools[0].name if manifest and manifest.tools else "execute"
+
+                agent_result = await AgentExecutor(registry).execute(
+                    task.agent_id,
+                    tool_name,
+                    task.agent_input or {"task": task.description, "user_input": state["user_input"]},
+                    context={"user_input": state["user_input"], "previous": context_parts},
+                )
+                if not agent_result.success:
+                    raise RuntimeError(agent_result.error or "에이전트 실행 실패")
+                result = agent_result.output
+            else:
+                # LLM 직접 실행 (기존 방식)
+                user_content = (
+                    f"원래 사용자 요청: {state['user_input']}\n\n"
+                    f"이전 태스크 결과:\n{chr(10).join(context_parts) or '없음'}\n\n"
+                    f"현재 수행할 태스크:\n제목: {task.title}\n설명: {task.description}"
+                )
+                response = await gateway.complete(settings.executor_model, _EXEC_SYSTEM, user_content)
+                result = response.content
+
             task.status = TaskStatus.COMPLETED
             task.result = result
             context_parts.append(f"[{task.title}]: {result}")

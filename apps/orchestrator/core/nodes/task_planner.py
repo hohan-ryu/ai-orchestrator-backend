@@ -17,7 +17,10 @@ _SYSTEM_PROMPT = """당신은 사용자의 요청을 달성하기 위한 실행 
   "tasks": [
     {{
       "title": "태스크 제목 (짧고 명확하게)",
-      "description": "태스크 상세 설명 (무엇을, 어떻게 할지)"
+      "description": "태스크 상세 설명 (무엇을, 어떻게 할지)",
+      "agent_id": "에이전트 ID 또는 null",
+      "agent_tool": "툴명 또는 null",
+      "agent_input": {{}}
     }}
   ]
 }}
@@ -26,7 +29,25 @@ _SYSTEM_PROMPT = """당신은 사용자의 요청을 달성하기 위한 실행 
 - 태스크는 순차적으로 실행됩니다
 - 각 태스크는 독립적으로 완료 가능해야 합니다
 - 최소 1개, 최대 {max_tasks}개의 태스크로 구성하세요
-- JSON 외에 다른 텍스트는 포함하지 마세요"""
+- 사용 가능한 에이전트가 있으면 적합한 태스크에 우선 배정하세요 (agent_id, agent_tool, agent_input 지정)
+- 에이전트 없이 LLM이 직접 처리할 태스크는 agent_id를 null로 설정하세요
+- JSON 외에 다른 텍스트는 포함하지 마세요{agents_section}"""
+
+_AGENTS_SECTION_TMPL = """
+
+사용 가능한 에이전트:
+{agents_list}
+각 에이전트의 툴을 적절한 태스크에 배정하세요."""
+
+
+def _format_agents(manifests) -> str:
+    if not manifests:
+        return ""
+    lines = []
+    for m in manifests:
+        tools = ", ".join(t.name for t in m.tools) or "없음"
+        lines.append(f"  - id: {m.id} | 타입: {m.type} | 설명: {m.description} | 툴: [{tools}]")
+    return _AGENTS_SECTION_TMPL.format(agents_list="\n".join(lines))
 
 
 def _make_fallback_plan(user_input: str) -> TaskPlan:
@@ -47,7 +68,11 @@ async def plan_tasks(state: OrchestratorState) -> dict:
     gateway = get_gateway(settings)
     intent = state["intent"]
 
-    system = _SYSTEM_PROMPT.format(max_tasks=settings.max_tasks)
+    from apps.orchestrator.agents.registry import get_registry
+    registry = get_registry()
+    agents_section = _format_agents(registry.list_enabled()) if registry else ""
+
+    system = _SYSTEM_PROMPT.format(max_tasks=settings.max_tasks, agents_section=agents_section)
     user_content = (
         f"사용자 요청: {state['user_input']}\n\n"
         f"의도 분석 결과:\n"
@@ -65,6 +90,9 @@ async def plan_tasks(state: OrchestratorState) -> dict:
                 title=t["title"],
                 description=t["description"],
                 status=TaskStatus.PENDING,
+                agent_id=t.get("agent_id") or None,
+                agent_tool=t.get("agent_tool") or None,
+                agent_input=t.get("agent_input") or {},
             )
             for t in parsed["tasks"]
         ]

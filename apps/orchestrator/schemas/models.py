@@ -59,6 +59,10 @@ class Task(BaseModel):
     status: TaskStatus = Field(default=TaskStatus.PENDING)
     result: str | None = None
     error: str | None = None
+    # 에이전트 라우팅 (None이면 LLM 직접 실행)
+    agent_id: str | None = Field(None, description="실행할 에이전트 ID")
+    agent_tool: str | None = Field(None, description="호출할 에이전트 툴명")
+    agent_input: dict[str, Any] = Field(default_factory=dict, description="에이전트 툴 입력 파라미터")
 
 
 class TaskPlan(BaseModel):

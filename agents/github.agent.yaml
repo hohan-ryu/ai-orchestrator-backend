@@ -1,0 +1,65 @@
+# GitHub 에이전트 — API 타입 예시
+# 별도 서비스가 http://localhost:9001 에서 실행 중이어야 합니다.
+
+id: github-agent
+name: GitHub Agent
+type: api
+description: GitHub 레파지토리 및 이슈를 관리하는 에이전트
+version: "1.0.0"
+enabled: false   # 실제 서비스 구동 시 true로 변경
+tags:
+  - github
+  - devops
+
+api:
+  url: http://localhost:9001
+  timeout: 30
+  auth_type: bearer
+  auth_token: ""        # 또는 환경변수: ${GITHUB_AGENT_TOKEN}
+  execute_path: /execute
+  tools_path: /tools
+  health_path: /health
+
+tools:
+  - name: create_repo
+    description: 새 GitHub 레파지토리를 생성합니다
+    input_schema:
+      type: object
+      properties:
+        repo_name:
+          type: string
+          description: 레파지토리 이름
+        private:
+          type: boolean
+          description: 비공개 여부
+          default: false
+        description:
+          type: string
+          description: 레파지토리 설명
+      required:
+        - repo_name
+
+  - name: list_repos
+    description: 사용자의 레파지토리 목록을 조회합니다
+    input_schema:
+      type: object
+      properties:
+        username:
+          type: string
+          description: GitHub 사용자명 (없으면 인증된 사용자)
+
+  - name: create_issue
+    description: 레파지토리에 이슈를 생성합니다
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: "owner/repo 형식"
+        title:
+          type: string
+        body:
+          type: string
+      required:
+        - repo
+        - title

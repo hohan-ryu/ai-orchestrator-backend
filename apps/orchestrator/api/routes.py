@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 import json
 import asyncio
@@ -83,11 +84,13 @@ async def _stream_graph(request: OrchestrateRequest, session_id: str, hitl_queue
                     if not isinstance(node_output, dict):
                         continue
                     for event in node_output.get("stream_events", []):
-                        event_key = f"{event.event}:{event.session_id}:{id(event)}"
+                        # 콘텐츠 기반 해시로 HITL 재실행 시 동일 이벤트 중복 방지
+                        serialized = json.dumps(event.model_dump(), ensure_ascii=False, sort_keys=True)
+                        event_key = hashlib.md5(serialized.encode()).hexdigest()
                         if event_key in seen_event_ids:
                             continue
                         seen_event_ids.add(event_key)
-                        yield f"data: {json.dumps(event.model_dump(), ensure_ascii=False)}\n\n"
+                        yield f"data: {serialized}\n\n"
                         await asyncio.sleep(0)
 
             # 그래프 상태 확인: 다음 노드가 있으면 interrupt 상태
