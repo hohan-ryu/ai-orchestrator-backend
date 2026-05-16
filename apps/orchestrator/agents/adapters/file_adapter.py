@@ -23,8 +23,8 @@ class FileAdapter(BaseAdapter):
         input_data: dict,
         context: dict | None = None,
     ) -> AgentResult:
-        from apps.orchestrator.llm_gateway import get_gateway
-        from apps.orchestrator.config import get_settings
+        from apps.orchestrator.llms import get_gateway
+        from apps.orchestrator.common.config import get_settings
 
         settings = get_settings()
         gateway = get_gateway(settings)

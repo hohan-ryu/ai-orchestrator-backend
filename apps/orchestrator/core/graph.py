@@ -2,12 +2,12 @@ import logging
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.errors import GraphBubbleUp
-from apps.orchestrator.config import get_settings
+from apps.orchestrator.common.config import get_settings
 from apps.orchestrator.core.state import OrchestratorState
 from apps.orchestrator.core.nodes.intent_analyzer import analyze_intent
 from apps.orchestrator.core.nodes.task_planner import plan_tasks
 from apps.orchestrator.core.nodes.task_executor import execute_tasks
-from apps.orchestrator.schemas.models import StreamEvent, StreamEventType
+from apps.orchestrator.common.schemas.models import StreamEvent, StreamEventType
 
 logger = logging.getLogger(__name__)
 

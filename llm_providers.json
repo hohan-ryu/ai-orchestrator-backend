@@ -1,0 +1,22 @@
+{
+  "providers": [
+    {
+      "id": "mock-fallback",
+      "name": "Mock (기본 폴백)",
+      "description": "API 키 없이 동작하는 테스트/폴백용 mock provider",
+      "adapter": "mock",
+      "capability": "both",
+      "enabled": true,
+      "priority": 99,
+      "is_fallback": true,
+      "base_url": "",
+      "api_key": "",
+      "model": "mock",
+      "embedding_model": "",
+      "temperature": 0.0,
+      "timeout": 60,
+      "max_retries": 1,
+      "tags": []
+    }
+  ]
+}

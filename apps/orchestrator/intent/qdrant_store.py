@@ -6,7 +6,7 @@ qdrant_enabled=false 이면 이 모듈은 로드되지 않습니다.
 
 import uuid
 import logging
-from apps.orchestrator.schemas.models import Intent
+from apps.orchestrator.common.schemas.models import Intent
 
 logger = logging.getLogger(__name__)
 

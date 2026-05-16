@@ -1,5 +1,5 @@
 from langchain_core.language_models import BaseChatModel
-from apps.orchestrator.config import Settings
+from apps.orchestrator.common.config import Settings
 
 # quota 에러(429)는 재시도해도 의미 없으므로 일시적 오류(5xx, timeout)만 retry 대상으로 지정
 _GOOGLE_RETRY_EXCEPTIONS: tuple = ()

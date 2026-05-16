@@ -7,8 +7,8 @@ Tier 3 (LLM)     → LLM Gateway 호출, 결과를 스토어에 저장
 """
 
 import logging
-from apps.orchestrator.config import Settings
-from apps.orchestrator.schemas.models import Intent
+from apps.orchestrator.common.config import Settings
+from apps.orchestrator.common.schemas.models import Intent
 from apps.orchestrator.intent.rule_filter import match_rules
 from apps.orchestrator.intent.embedding_matcher import match_from_store
 from apps.orchestrator.intent.llm_analyzer import analyze_with_llm

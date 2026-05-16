@@ -6,9 +6,10 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from apps.orchestrator.config import get_settings
-from apps.orchestrator.api.routes import router
+from apps.orchestrator.common.config import get_settings
+from apps.orchestrator.streaming.router import router
 from apps.orchestrator.api.agent_routes import router as agents_router
+from apps.orchestrator.api.llm_provider_routes import router as llm_providers_router
 
 _logger = logging.getLogger(__name__)
 
@@ -58,15 +59,23 @@ async def lifespan(app: FastAPI):
 
     # 3. AgentRegistry 초기화 (agents/ 디렉토리 감시 + hot-reload)
     from apps.orchestrator.agents.registry import init_registry, shutdown_registry
-    from pathlib import Path
     agents_dir = Path(settings.agents_dir)
     if not agents_dir.is_absolute():
         agents_dir = _LOG_DIR / settings.agents_dir
     await init_registry(agents_dir)
     _logger.info("[Agent] 레지스트리 초기화 완료: %s", agents_dir)
 
+    # 4. LLM ProviderRegistry 초기화 (llm_providers.json 감시 + hot-reload)
+    from apps.orchestrator.llms.provider_registry import init_provider_registry, shutdown_provider_registry
+    llm_providers_path = Path(settings.llm_providers_file)
+    if not llm_providers_path.is_absolute():
+        llm_providers_path = _LOG_DIR / settings.llm_providers_file
+    await init_provider_registry(llm_providers_path)
+    _logger.info("[LLM] ProviderRegistry 초기화 완료: %s", llm_providers_path)
+
     yield
 
+    await shutdown_provider_registry()
     await shutdown_registry()
     _logger.info("앱 종료")
 
@@ -98,6 +107,7 @@ app.add_middleware(
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
+app.include_router(llm_providers_router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)

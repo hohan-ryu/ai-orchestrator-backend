@@ -1,6 +1,6 @@
 from typing import Annotated
 from typing_extensions import TypedDict
-from apps.orchestrator.schemas.models import Intent, Task, TaskPlan, StreamEvent
+from apps.orchestrator.common.schemas.models import Intent, Task, TaskPlan, StreamEvent
 
 
 class OrchestratorState(TypedDict):

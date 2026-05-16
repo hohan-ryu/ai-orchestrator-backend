@@ -8,7 +8,7 @@ import json
 import logging
 from pathlib import Path
 import numpy as np
-from apps.orchestrator.schemas.models import Intent
+from apps.orchestrator.common.schemas.models import Intent
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ def get_intent_store(settings=None):
     if _store_instance is not None:
         return _store_instance
 
-    from apps.orchestrator.config import get_settings
+    from apps.orchestrator.common.config import get_settings
     s = settings or get_settings()
 
     if s.qdrant_enabled:

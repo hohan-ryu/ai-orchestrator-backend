@@ -5,7 +5,7 @@ LLM 호출 없이 명확한 요청을 즉시 분류합니다.
 """
 
 import re
-from apps.orchestrator.schemas.models import Intent
+from apps.orchestrator.common.schemas.models import Intent
 
 # (category, summary, confidence, patterns[])
 _RULES: list[tuple[str, str, float, list[str]]] = [

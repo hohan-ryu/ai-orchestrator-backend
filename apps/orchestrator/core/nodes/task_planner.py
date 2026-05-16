@@ -1,11 +1,11 @@
 import json
 import uuid
 import logging
-from apps.orchestrator.config import get_settings
+from apps.orchestrator.common.config import get_settings
 from apps.orchestrator.core.state import OrchestratorState
-from apps.orchestrator.llm_gateway import get_gateway
+from apps.orchestrator.llms import get_gateway
 from apps.orchestrator.core.utils import safe_parse_json
-from apps.orchestrator.schemas.models import Task, TaskPlan, TaskStatus, StreamEvent, StreamEventType
+from apps.orchestrator.common.schemas.models import Task, TaskPlan, TaskStatus, StreamEvent, StreamEventType
 
 logger = logging.getLogger(__name__)
 

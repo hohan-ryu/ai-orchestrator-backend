@@ -1,9 +1,9 @@
 import logging
 from langgraph.types import interrupt
-from apps.orchestrator.config import get_settings
+from apps.orchestrator.common.config import get_settings
 from apps.orchestrator.core.state import OrchestratorState
 from apps.orchestrator.intent.pipeline import run_pipeline
-from apps.orchestrator.schemas.models import StreamEvent, StreamEventType, HITLPayload
+from apps.orchestrator.common.schemas.models import StreamEvent, StreamEventType, HITLPayload
 
 logger = logging.getLogger(__name__)
 

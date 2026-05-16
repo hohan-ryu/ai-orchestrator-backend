@@ -4,10 +4,10 @@ Rule/캐시로 처리되지 않은 신규 요청에만 호출됩니다.
 """
 
 import logging
-from apps.orchestrator.config import Settings
-from apps.orchestrator.llm_gateway import get_gateway
+from apps.orchestrator.common.config import Settings
+from apps.orchestrator.llms import get_gateway
 from apps.orchestrator.core.utils import safe_parse_json
-from apps.orchestrator.schemas.models import Intent
+from apps.orchestrator.common.schemas.models import Intent
 
 logger = logging.getLogger(__name__)
 

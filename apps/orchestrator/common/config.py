@@ -47,9 +47,15 @@ class Settings(BaseSettings):
     # Agent Registry
     agents_dir: str = "agents"              # 에이전트 정의 파일 디렉토리 (프로젝트 루트 기준)
 
+    # LLM Provider Registry
+    llm_providers_file: str = "llm_providers.json"  # LLM provider 설정 파일 (프로젝트 루트 기준)
+
     # Human-in-the-Loop
     hitl_confirm_plan: bool = True          # 실행 전 플랜 사용자 확인
     hitl_clarify_threshold: float = 0.5    # 신뢰도 미달 시 사용자에게 의도 확인 요청
+
+    # Security
+    encryption_key: str = ""               # Fernet key (base64). 빈 값이면 암호화 비활성화.
 
     # API
     api_host: str = "0.0.0.0"
