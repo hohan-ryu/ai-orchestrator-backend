@@ -1,0 +1,194 @@
+@startuml llms_component_diagram
+
+skinparam defaultFontName  "Segoe UI"
+skinparam defaultFontSize  11
+skinparam componentStyle   rectangle
+skinparam wrapWidth        180
+
+skinparam component {
+    BackgroundColor #DBEAFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+    BorderThickness 2
+}
+skinparam interface {
+    BackgroundColor #D1FAE5
+    BorderColor     #059669
+    FontColor       #064E3B
+}
+skinparam package {
+    BackgroundColor #F8FAFC
+    BorderColor     #94A3B8
+    FontColor       #334155
+}
+skinparam database {
+    BackgroundColor #FEF3C7
+    BorderColor     #D97706
+    FontColor       #78350F
+}
+skinparam actor {
+    BackgroundColor #BFDBFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+}
+skinparam arrow {
+    Color     #64748B
+    FontColor #475569
+    FontSize  10
+}
+
+top to bottom direction
+
+title llms/ Component Diagram
+
+' ══════════════════════════════════════════════
+' 외부 호출자
+' ══════════════════════════════════════════════
+together {
+    actor "core/\ntask_planner · task_executor\nintent_analyzer" as CORE_CALLER
+    actor "api/\nllm_provider_routes" as API_CALLER
+    actor "streaming/\nrouter" as STREAM_CALLER
+}
+
+' ══════════════════════════════════════════════
+' llms/ 패키지
+' ══════════════════════════════════════════════
+package "llms/" {
+
+    ' ── gateway.py ────────────────────────────
+    () "complete(model, system, user)\n→ CompletionResponse"   as IF_COMPLETE
+    () "embed(text)\n→ list[float] | None"                     as IF_EMBED
+    () "token_tracker\nget_gateway()  ·  reset_gateway()"      as IF_GATEWAY
+
+    [gateway.py\nLLMGateway  싱글톤\nprovider 우선순위 체인  ·  fallback 처리] as GATEWAY <<component>>
+
+    GATEWAY -- IF_COMPLETE
+    GATEWAY -- IF_EMBED
+    GATEWAY -- IF_GATEWAY
+
+    ' ── provider_registry.py ──────────────────
+    () "ProviderRegistry\nget() · list_enabled() · list_all()\nadd() · update() · remove() · reload()\nencrypt_api_key() · resolve_api_key()" as IF_REGISTRY
+    () "init_provider_registry(path)\nget_provider_registry()\nshutdown_provider_registry()"           as IF_REG_INIT
+
+    [provider_registry.py\nProviderRegistry  싱글톤\nJSON CRUD  ·  watchdog hot-reload\nFernet 복호화  ·  ${ENV_VAR} 치환] as REGISTRY <<component>>
+
+    REGISTRY -- IF_REGISTRY
+    REGISTRY -- IF_REG_INIT
+
+    ' ── provider_config.py ────────────────────
+    () "LLMProviderConfig\nconfig_hash()  ·  supports_completion()\nProviderCreateRequest\nProviderUpdateRequest  ·  ProviderResponse" as IF_CONFIG
+
+    [provider_config.py\nPydantic 스키마\nAdapterType  ·  CapabilityType\npriority  ·  is_fallback  ·  api_key] as CONFIG <<component>>
+
+    CONFIG -- IF_CONFIG
+
+    ' ── token_tracker.py ──────────────────────
+    () "TokenTracker\nrecord()  ·  summary()  ·  reset()" as IF_TRACKER
+
+    [token_tracker.py\nUsageRecord  누적\nprovider별 토큰 사용량 집계] as TRACKER <<component>>
+
+    TRACKER -- IF_TRACKER
+
+    ' ── adapters/base.py ──────────────────────
+    () "BaseAdapter\ncomplete(model, system, user)\nembed(text, model)" as IF_BASE
+    () "CompletionResponse\ncontent · tokens · provider · model" as IF_RESP
+
+    [adapters/base.py\nABC BaseAdapter\nCompletionResponse] as BASE <<component>>
+
+    BASE -- IF_BASE
+    BASE -- IF_RESP
+
+    ' ── adapters/factory.py ───────────────────
+    () "create(config, resolved_key)\ninvalidate(provider_id)\nclear_cache()" as IF_FACTORY
+
+    [adapters/factory.py\nconfig_hash() 기반 캐싱\n인스턴스 재사용  ·  무효화] as FACTORY <<component>>
+
+    FACTORY -- IF_FACTORY
+
+    ' ── 구체 어댑터 — Public ──────────────────
+    together {
+        [adapters/public/google.py\nGoogleAdapter\ngemini-* 모델] as GOOGLE <<component>>
+        [adapters/public/anthropic.py\nAnthropicAdapter\nclaude-* 모델] as ANTHROPIC <<component>>
+        [adapters/public/openai.py\nOpenAIAdapter\ngpt-* · custom base_url] as OPENAI <<component>>
+        GOOGLE    -- IF_BASE
+        ANTHROPIC -- IF_BASE
+        OPENAI    -- IF_BASE
+    }
+
+    ' ── 구체 어댑터 — Private · Embedding · Mock
+    together {
+        [adapters/private/ollama.py\nOllamaAdapter\nHTTP base_url] as OLLAMA <<component>>
+        [adapters/embedding/local.py\nLocalEmbeddingAdapter\nBAAI/bge-m3 등] as LOCAL <<component>>
+        [adapters/mock/mock.py\nMockAdapter\nAPI 키 불필요] as MOCK <<component>>
+        OLLAMA -- IF_BASE
+        LOCAL  -- IF_BASE
+        MOCK   -- IF_BASE
+    }
+}
+
+' ══════════════════════════════════════════════
+' 외부 의존성
+' ══════════════════════════════════════════════
+together {
+    database "common/\nSettings  ·  get_settings()\nencrypt()  ·  decrypt()" as COMMON
+    database "llm_providers.json\n영속 설정 파일"                             as JSON_FILE
+}
+together {
+    database "LLM APIs\nAnthropic · Google · OpenAI\nOllama (local HTTP)"    as LLM_API
+    database "watchdog\nFileModifiedEvent\nhot-reload 트리거"                  as WATCHDOG
+}
+
+' ══════════════════════════════════════════════
+' Connectors — 외부 호출자 → gateway
+' ══════════════════════════════════════════════
+CORE_CALLER   ..> IF_COMPLETE : complete(planner_model)\ncomplete(executor_model)
+CORE_CALLER   ..> IF_EMBED    : embed(text)
+STREAM_CALLER ..> IF_GATEWAY  : token_tracker.summary()\ntoken_tracker.reset()
+API_CALLER    ..> IF_REGISTRY : CRUD · reload
+API_CALLER    ..> IF_REG_INIT : get_provider_registry()
+API_CALLER    ..> IF_CONFIG   : ProviderCreateRequest\nProviderUpdateRequest
+
+' ══════════════════════════════════════════════
+' Connectors — gateway → 내부 컴포넌트 (Assembly)
+' ══════════════════════════════════════════════
+GATEWAY ..> IF_REGISTRY : list_enabled(capability)\nresolve_api_key()
+GATEWAY ..> IF_FACTORY  : create(config, resolved_key)
+GATEWAY ..> IF_TRACKER  : record(provider, tokens)
+GATEWAY ..> IF_BASE     : adapter.complete()\nadapter.embed()
+
+' ══════════════════════════════════════════════
+' Connectors — registry → config · 외부
+' ══════════════════════════════════════════════
+REGISTRY ..> IF_CONFIG  : LLMProviderConfig CRUD
+REGISTRY ..> COMMON     : encrypt() · decrypt()
+REGISTRY ..> JSON_FILE  : read · write
+REGISTRY ..> WATCHDOG   : FileModifiedEvent → reload()
+
+' ══════════════════════════════════════════════
+' Connectors — factory → 어댑터 생성
+' ══════════════════════════════════════════════
+FACTORY ..> IF_CONFIG : config.adapter 분기
+FACTORY ..> IF_BASE   : → BaseAdapter 반환
+
+' ══════════════════════════════════════════════
+' Connectors — 구체 어댑터 → LLM API
+' ══════════════════════════════════════════════
+GOOGLE    ..> LLM_API
+ANTHROPIC ..> LLM_API
+OPENAI    ..> LLM_API
+OLLAMA    ..> LLM_API : HTTP localhost:11434
+
+' ══════════════════════════════════════════════
+' 범례
+' ══════════════════════════════════════════════
+legend right
+  표기 규칙 (UML 2.0 Component Diagram)
+  ════════════════════════════════════════
+  [  ] <<component>>   컴포넌트
+  () ─── [  ]          제공 인터페이스 (Lollipop)
+  [  ] ..> ()          사용 의존성 (Required → Provided)
+  () ─── [A]  [B]      A, B 모두 동일 인터페이스 제공 (다형성)
+  database             외부 시스템 / 파일
+endlegend
+
+@enduml

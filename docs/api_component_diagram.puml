@@ -1,0 +1,134 @@
+@startuml api_component_diagram
+
+skinparam defaultFontName  "Segoe UI"
+skinparam defaultFontSize  11
+skinparam componentStyle   rectangle
+skinparam wrapWidth        180
+
+skinparam component {
+    BackgroundColor #DBEAFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+    BorderThickness 2
+}
+skinparam interface {
+    BackgroundColor #D1FAE5
+    BorderColor     #059669
+    FontColor       #064E3B
+}
+skinparam package {
+    BackgroundColor #F8FAFC
+    BorderColor     #94A3B8
+    FontColor       #334155
+}
+skinparam database {
+    BackgroundColor #FEF3C7
+    BorderColor     #D97706
+    FontColor       #78350F
+}
+skinparam actor {
+    BackgroundColor #BFDBFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+}
+skinparam arrow {
+    Color     #64748B
+    FontColor #475569
+    FontSize  10
+}
+
+top to bottom direction
+
+title api/ Component Diagram
+
+' ══════════════════════════════════════════════
+' 외부 호출자
+' ══════════════════════════════════════════════
+actor "HTTP Client\n(Admin UI)" as CLIENT
+
+' ══════════════════════════════════════════════
+' api/ 패키지
+' ══════════════════════════════════════════════
+package "api/" {
+
+    ' ── llm_provider_routes.py 제공 인터페이스 ─
+    together {
+        () "GET /llm-providers/  ·  /{id}\nGET /adapters"                      as IF_LLM_READ
+        () "POST /  ·  PUT /{id}  ·  DELETE /{id}"                             as IF_LLM_CRUD
+        () "POST /{id}/enable  ·  /{id}/disable\nPOST /{id}/test  ·  /reload"  as IF_LLM_OPS
+    }
+
+    [llm_provider_routes.py\nAPIRouter  prefix: /llm-providers\nLLM Provider CRUD  ·  활성화/비활성화\n연결 테스트  ·  강제 reload] as LLM_ROUTER <<component>>
+
+    LLM_ROUTER -- IF_LLM_READ
+    LLM_ROUTER -- IF_LLM_CRUD
+    LLM_ROUTER -- IF_LLM_OPS
+
+    ' ── agent_routes.py 제공 인터페이스 ────────
+    together {
+        () "GET /agents/  ·  /{id}"                              as IF_AGENT_READ
+        () "POST /  ·  DELETE /{id}"                             as IF_AGENT_CRUD
+        () "POST /reload  ·  /{id}/reload  ·  /{id}/ping"        as IF_AGENT_OPS
+    }
+
+    [agent_routes.py\nAPIRouter  prefix: /agents\nAgent 관리 CRUD  ·  파일 쓰기\nhot-reload  ·  ping] as AGENT_ROUTER <<component>>
+
+    AGENT_ROUTER -- IF_AGENT_READ
+    AGENT_ROUTER -- IF_AGENT_CRUD
+    AGENT_ROUTER -- IF_AGENT_OPS
+}
+
+' ══════════════════════════════════════════════
+' 외부 의존성
+' ══════════════════════════════════════════════
+together {
+    database "llms/\nprovider_registry\nget_provider_registry()  ·  ProviderRegistry\nencrypt_api_key()  ·  resolve_api_key()" as PROV_REG
+    database "llms/\nprovider_config\nLLMProviderConfig  ·  ProviderCreateRequest\nProviderUpdateRequest  ·  ProviderResponse" as PROV_CFG
+    database "llms/adapters/\nfactory\ncreate()  ·  invalidate()  ·  clear_cache()"                                            as ADAPTER_FAC
+}
+together {
+    database "agents/\nregistry\nget_registry()  ·  AgentRegistry" as AGENT_REG
+    database "FastAPI\nAPIRouter  ·  HTTPException"                  as FASTAPI
+}
+
+' ══════════════════════════════════════════════
+' Connectors — Client → Router
+' ══════════════════════════════════════════════
+CLIENT ..> IF_LLM_READ
+CLIENT ..> IF_LLM_CRUD
+CLIENT ..> IF_LLM_OPS
+CLIENT ..> IF_AGENT_READ
+CLIENT ..> IF_AGENT_CRUD
+CLIENT ..> IF_AGENT_OPS
+
+' ══════════════════════════════════════════════
+' Connectors — llm_router → 외부 의존성
+' ══════════════════════════════════════════════
+LLM_ROUTER ..> PROV_REG    : list_all()  ·  get()  ·  add()\nupdate()  ·  remove()  ·  reload()\nencrypt_api_key()  ·  resolve_api_key()
+LLM_ROUTER ..> PROV_CFG    : LLMProviderConfig 생성\nProviderResponse.from_config()
+LLM_ROUTER ..> ADAPTER_FAC : create() [test]\ninvalidate() [update·delete]\nclear_cache() [reload]
+
+' ══════════════════════════════════════════════
+' Connectors — agent_router → 외부 의존성
+' ══════════════════════════════════════════════
+AGENT_ROUTER ..> AGENT_REG : list_enabled()  ·  get()\nget_adapter()  ·  reload_all()  ·  reload_one()
+
+' ══════════════════════════════════════════════
+' 공통 의존성
+' ══════════════════════════════════════════════
+LLM_ROUTER   ..> FASTAPI
+AGENT_ROUTER ..> FASTAPI
+
+' ══════════════════════════════════════════════
+' 범례
+' ══════════════════════════════════════════════
+legend right
+  표기 규칙 (UML 2.0 Component Diagram)
+  ════════════════════════════════════════
+  [  ] <<component>>   컴포넌트
+  () ─── [  ]          제공 인터페이스 (Lollipop)
+  [  ] ..> ()          사용 의존성 (Required → Provided)
+  database             외부 시스템 / 패키지
+endlegend
+
+@enduml

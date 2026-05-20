@@ -1,0 +1,156 @@
+@startuml common_component_diagram
+
+skinparam defaultFontName  "Segoe UI"
+skinparam defaultFontSize  11
+skinparam componentStyle   rectangle
+skinparam wrapWidth        180
+
+skinparam component {
+    BackgroundColor #DBEAFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+    BorderThickness 2
+}
+skinparam interface {
+    BackgroundColor #D1FAE5
+    BorderColor     #059669
+    FontColor       #064E3B
+}
+skinparam package {
+    BackgroundColor #F8FAFC
+    BorderColor     #94A3B8
+    FontColor       #334155
+}
+skinparam database {
+    BackgroundColor #FEF3C7
+    BorderColor     #D97706
+    FontColor       #78350F
+}
+skinparam actor {
+    BackgroundColor #BFDBFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+}
+skinparam arrow {
+    Color     #64748B
+    FontColor #475569
+    FontSize  10
+}
+
+top to bottom direction
+
+title common/ Component Diagram
+
+' ══════════════════════════════════════════════
+' 외부 호출자
+' ══════════════════════════════════════════════
+together {
+    actor "llms/ · agents/ · intent/" as DOMAIN_CALLER
+    actor "core/ · streaming/ · api/" as ORCH_CALLER
+}
+
+' ══════════════════════════════════════════════
+' common/ 패키지
+' ══════════════════════════════════════════════
+package "common/" {
+
+    ' ── config.py ─────────────────────────────
+    () "Settings\nget_settings() → Settings\n(lru_cache  ·  .env 로딩)" as IF_SETTINGS
+
+    [config.py\nSettings  (pydantic_settings)\nLLM 모델  ·  Redis  ·  Qdrant\nHITL  ·  gateway  ·  agents_dir] as CONFIG <<component>>
+
+    CONFIG -- IF_SETTINGS
+
+    ' ── encryption.py ─────────────────────────
+    () "encrypt(plaintext) → str\ndecrypt(ciphertext) → str\ngenerate_key() → str" as IF_ENCRYPT
+
+    [encryption.py\nFernet 대칭키 암호화\nencryption_key 미설정 시 원문 반환\nSHA-256 키 파생 지원] as ENCRYPT <<component>>
+
+    ENCRYPT -- IF_ENCRYPT
+
+    ' ── logging.py ────────────────────────────
+    () "get_logger(name) → Logger\nbind(logger, **ctx) → LoggerAdapter\nJsonFormatter" as IF_LOG
+
+    [logging.py\n구조화 로깅\nJSON Lines 포매터\nLoggerAdapter 컨텍스트 바인딩] as LOGGING <<component>>
+
+    LOGGING -- IF_LOG
+
+    ' ── schemas/models.py ─────────────────────
+    together {
+        () "OrchestrateRequest  ·  ResumeRequest\nOrchestrateResponse" as IF_SCHEMA_API
+        () "Intent  ·  Task  ·  TaskPlan\nStreamEvent  ·  HITLPayload\nTaskStatus  ·  StreamEventType" as IF_SCHEMA_DOMAIN
+    }
+
+    [schemas/models.py\nPydantic 도메인 스키마\nRequest  ·  Response  ·  HITL\nIntent  ·  Task  ·  TaskPlan  ·  StreamEvent] as SCHEMAS <<component>>
+
+    SCHEMAS -- IF_SCHEMA_API
+    SCHEMAS -- IF_SCHEMA_DOMAIN
+
+    ' ── data/vector_store.py ──────────────────
+    () "QdrantVectorStore\nupsert(key, vector, payload)\nsearch(vector, limit, score_threshold)" as IF_VECTOR
+
+    [data/vector_store.py\nQdrantVectorStore\nCosine 유사도 검색\n컬렉션 자동 생성  ·  차원 불일치 재생성] as VECTOR <<component>>
+
+    VECTOR -- IF_VECTOR
+
+    ' ── data/cache.py ─────────────────────────
+    () "get_cache() → RedisCache | NoopCache\nget()  ·  set()  ·  delete()  ·  exists()" as IF_CACHE
+
+    [data/cache.py\nRedisCache  ·  NoopCache\nredis_enabled 분기  ·  aioredis 싱글톤\n비활성화 시 NoopCache 자동 대체] as CACHE <<component>>
+
+    CACHE -- IF_CACHE
+}
+
+' ══════════════════════════════════════════════
+' 외부 의존성
+' ══════════════════════════════════════════════
+together {
+    database "pydantic_settings\nBaseSettings  ·  .env 파일 로딩" as PYDANTIC
+    database "cryptography\nFernet  ·  대칭키 암호화" as FERNET
+}
+together {
+    database "qdrant_client\nAsyncQdrantClient  ·  VectorParams" as QDRANT
+    database "redis.asyncio\naioredis  ·  비동기 Redis 클라이언트" as REDIS
+}
+
+' ══════════════════════════════════════════════
+' Connectors — 외부 호출자 → common
+' ══════════════════════════════════════════════
+DOMAIN_CALLER ..> IF_SETTINGS     : get_settings()
+DOMAIN_CALLER ..> IF_ENCRYPT      : encrypt() · decrypt()
+DOMAIN_CALLER ..> IF_SCHEMA_DOMAIN : Intent · Task · TaskPlan\nStreamEvent · HITLPayload
+DOMAIN_CALLER ..> IF_VECTOR       : upsert() · search()
+
+ORCH_CALLER ..> IF_SETTINGS    : get_settings()
+ORCH_CALLER ..> IF_LOG         : get_logger() · bind()
+ORCH_CALLER ..> IF_SCHEMA_API  : OrchestrateRequest · ResumeRequest\nOrchestrateResponse
+ORCH_CALLER ..> IF_SCHEMA_DOMAIN : StreamEvent · HITLPayload
+ORCH_CALLER ..> IF_CACHE       : get_cache()
+
+' ══════════════════════════════════════════════
+' Connectors — 내부 의존성
+' ══════════════════════════════════════════════
+ENCRYPT ..> IF_SETTINGS : get_settings().encryption_key
+CACHE   ..> IF_SETTINGS : get_settings().redis_enabled · redis_url
+
+' ══════════════════════════════════════════════
+' Connectors — common → 외부 라이브러리
+' ══════════════════════════════════════════════
+CONFIG  ..> PYDANTIC
+ENCRYPT ..> FERNET
+VECTOR  ..> QDRANT
+CACHE   ..> REDIS
+
+' ══════════════════════════════════════════════
+' 범례
+' ══════════════════════════════════════════════
+legend right
+  표기 규칙 (UML 2.0 Component Diagram)
+  ════════════════════════════════════════
+  [  ] <<component>>   컴포넌트
+  () ─── [  ]          제공 인터페이스 (Lollipop)
+  [  ] ..> ()          사용 의존성 (Required → Provided)
+  database             외부 시스템 / 라이브러리
+endlegend
+
+@enduml

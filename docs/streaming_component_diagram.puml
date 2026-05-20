@@ -1,0 +1,146 @@
+@startuml streaming_component_diagram
+
+skinparam defaultFontName  "Segoe UI"
+skinparam defaultFontSize  11
+skinparam componentStyle   rectangle
+skinparam wrapWidth        180
+
+skinparam component {
+    BackgroundColor #DBEAFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+    BorderThickness 2
+}
+skinparam interface {
+    BackgroundColor #D1FAE5
+    BorderColor     #059669
+    FontColor       #064E3B
+}
+skinparam package {
+    BackgroundColor #F8FAFC
+    BorderColor     #94A3B8
+    FontColor       #334155
+}
+skinparam database {
+    BackgroundColor #FEF3C7
+    BorderColor     #D97706
+    FontColor       #78350F
+}
+skinparam actor {
+    BackgroundColor #BFDBFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+}
+skinparam arrow {
+    Color     #64748B
+    FontColor #475569
+    FontSize  10
+}
+
+left to right direction
+
+title streaming/ Component Diagram
+
+' ══════════════════════════════════════════════
+' 클라이언트
+' ══════════════════════════════════════════════
+actor "HTTP Client" as CLIENT
+
+' ══════════════════════════════════════════════
+' streaming/ 패키지
+' ══════════════════════════════════════════════
+package "streaming/" {
+
+    ' ── router.py 제공 인터페이스 ──────────────
+    together {
+        () "POST /stream"         as IF_STREAM
+        () "POST /resume/{id}"    as IF_RESUME
+        () "GET /sessions"        as IF_SESSIONS
+        () "GET·DEL /token-usage" as IF_TOKEN
+        () "POST /run"            as IF_RUN
+    }
+
+    [router.py\nAPIRouter  prefix: /orchestrate] as ROUTER <<component>>
+
+    ROUTER -- IF_STREAM
+    ROUTER -- IF_RESUME
+    ROUTER -- IF_SESSIONS
+    ROUTER -- IF_TOKEN
+    ROUTER -- IF_RUN
+
+    ' ── sse.py 제공 인터페이스 ────────────────
+    together {
+        () "stream_graph()\nAsyncGenerator[str]" as IF_SG
+        () "make_initial_state()"                as IF_MIS
+    }
+
+    [sse.py\nSSE 스트리밍 핵심 로직] as SSE <<component>>
+
+    SSE -- IF_SG
+    SSE -- IF_MIS
+
+    ' ── hitl.py 제공 인터페이스 ───────────────
+    () "HITLManager\nregister()  send_response()\nunregister()  active_sessions" as IF_HITL
+
+    [hitl.py\nHITLManager 싱글톤] as HITL <<component>>
+
+    HITL -- IF_HITL
+}
+
+' ══════════════════════════════════════════════
+' 외부 의존성
+' ══════════════════════════════════════════════
+together {
+    database "core/\nget_graph()\nastream() · aget_state()" as CORE
+    database "llms/\nget_gateway()\ntoken_tracker"          as LLMGW
+}
+together {
+    database "common/schemas\nOrchestrateRequest · OrchestrateResponse\nResumeRequest · StreamEvent" as COMMON
+    database "langgraph.types\nCommand(resume=)"            as LGCMD
+}
+
+' ══════════════════════════════════════════════
+' Connectors — Client → Router
+' ══════════════════════════════════════════════
+CLIENT ..> IF_STREAM
+CLIENT ..> IF_RESUME
+CLIENT ..> IF_SESSIONS
+CLIENT ..> IF_TOKEN
+CLIENT ..> IF_RUN
+
+' ══════════════════════════════════════════════
+' Connectors — Router → SSE (위임)
+' ══════════════════════════════════════════════
+ROUTER ..> IF_SG  : stream_graph(request, session_id, queue)
+ROUTER ..> IF_MIS : make_initial_state(request, session_id)
+
+' ══════════════════════════════════════════════
+' Connectors — Router·SSE → HITL (Assembly)
+' ══════════════════════════════════════════════
+ROUTER ..> IF_HITL : register()\nsend_response()\nactive_sessions
+SSE    ..> IF_HITL : unregister()
+
+' ══════════════════════════════════════════════
+' Connectors — 외부 의존성
+' ══════════════════════════════════════════════
+ROUTER ..> CORE   : get_graph().ainvoke()
+SSE    ..> CORE   : astream() · aget_state()
+ROUTER ..> LLMGW  : token_tracker.summary() / reset()
+ROUTER ..> COMMON
+SSE    ..> COMMON
+SSE    ..> LGCMD  : Command(resume=user_response)
+
+' ══════════════════════════════════════════════
+' 범례
+' ══════════════════════════════════════════════
+legend right
+  표기 규칙 (UML 2.0 Component Diagram)
+  ════════════════════════════════════════
+  [  ] <<component>>   컴포넌트
+  () ─── [  ]          제공 인터페이스 (Lollipop)
+  [  ] ..> ()          사용 의존성 (Required → Provided)
+  ()  ..> () ─ [  ]    어셈블리 커넥터
+  database             외부 시스템
+endlegend
+
+@enduml

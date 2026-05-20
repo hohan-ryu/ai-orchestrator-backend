@@ -1,0 +1,166 @@
+@startuml agents_component_diagram
+
+skinparam defaultFontName  "Segoe UI"
+skinparam defaultFontSize  11
+skinparam componentStyle   rectangle
+skinparam wrapWidth        180
+
+skinparam component {
+    BackgroundColor #DBEAFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+    BorderThickness 2
+}
+skinparam interface {
+    BackgroundColor #D1FAE5
+    BorderColor     #059669
+    FontColor       #064E3B
+}
+skinparam package {
+    BackgroundColor #F8FAFC
+    BorderColor     #94A3B8
+    FontColor       #334155
+}
+skinparam database {
+    BackgroundColor #FEF3C7
+    BorderColor     #D97706
+    FontColor       #78350F
+}
+skinparam actor {
+    BackgroundColor #BFDBFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+}
+skinparam arrow {
+    Color     #64748B
+    FontColor #475569
+    FontSize  10
+}
+
+top to bottom direction
+
+title agents/ Component Diagram
+
+' ══════════════════════════════════════════════
+' 외부 호출자
+' ══════════════════════════════════════════════
+together {
+    actor "core/\ntask_executor" as CORE_CALLER
+    actor "api/\nagent_routes" as API_CALLER
+}
+
+' ══════════════════════════════════════════════
+' agents/ 패키지
+' ══════════════════════════════════════════════
+package "agents/" {
+
+    ' ── registry.py ───────────────────────────
+    () "AgentRegistry\nget()  ·  list_enabled()\nget_adapter()  ·  reload_all()  ·  reload_one()" as IF_REGISTRY
+    () "init_registry()\nget_registry()\nshutdown_registry()"                                      as IF_REG_INIT
+
+    [registry.py\nAgentRegistry  싱글톤\nYAML/JSON/MD 파싱  ·  watchdog hot-reload\n_build_adapter() 팩토리] as REGISTRY <<component>>
+
+    REGISTRY -- IF_REGISTRY
+    REGISTRY -- IF_REG_INIT
+
+    ' ── executor.py ───────────────────────────
+    () "AgentExecutor\nexecute(agent_id, tool, input_data, context)\n→ AgentResult" as IF_EXEC
+
+    [executor.py\nAgentExecutor\n에이전트 실행 위임] as EXECUTOR <<component>>
+
+    EXECUTOR -- IF_EXEC
+
+    ' ── manifest.py ───────────────────────────
+    () "AgentManifest  ·  AgentTool\nAPIConfig  ·  MCPConfig  ·  AgentResult" as IF_MANIFEST
+
+    [manifest.py\nPydantic 스키마\nAdapterType  ·  enabled  ·  tools\nsystem_prompt  ·  api  ·  mcp] as MANIFEST <<component>>
+
+    MANIFEST -- IF_MANIFEST
+
+    ' ── watcher.py ────────────────────────────
+    () "AgentFileWatcher\nstart()  ·  stop()" as IF_WATCHER
+
+    [watcher.py\nAgentFileWatcher\nwatchdog Observer\n.yaml/.yml/.json/.md 감시] as WATCHER <<component>>
+
+    WATCHER -- IF_WATCHER
+
+    ' ── adapters/base.py ──────────────────────
+    () "BaseAdapter\nexecute()  ·  list_tools()\nping()  ·  close()" as IF_BASE
+
+    [adapters/base.py\nABC BaseAdapter] as BASE <<component>>
+
+    BASE -- IF_BASE
+
+    ' ── 구체 어댑터 ───────────────────────────
+    together {
+        [adapters/api_adapter.py\nAPIAdapter\nhttpx HTTP REST] as API_ADAPT <<component>>
+        [adapters/mcp_adapter.py\nMCPAdapter\nMCP stdio subprocess] as MCP_ADAPT <<component>>
+        [adapters/file_adapter.py\nFileAdapter\nsystem_prompt → LLM] as FILE_ADAPT <<component>>
+        API_ADAPT  -- IF_BASE
+        MCP_ADAPT  -- IF_BASE
+        FILE_ADAPT -- IF_BASE
+    }
+}
+
+' ══════════════════════════════════════════════
+' 외부 의존성
+' ══════════════════════════════════════════════
+together {
+    database "watchdog\nFileModifiedEvent\nhot-reload 트리거" as WATCHDOG
+    database "common/\nSettings  ·  schemas"                  as COMMON
+}
+together {
+    database "httpx\nAsyncClient"                                         as HTTPX
+    database "mcp\nClientSession  ·  stdio_client\nStdioServerParameters" as MCP_PKG
+    database "llms/\nget_gateway()  ·  LLMGateway"                        as LLMS_PKG
+}
+
+' ══════════════════════════════════════════════
+' Connectors — 외부 호출자 → agents
+' ══════════════════════════════════════════════
+CORE_CALLER ..> IF_REGISTRY : get(agent_id)\nlist_enabled()
+CORE_CALLER ..> IF_EXEC     : execute(agent_id, tool, input_data)
+API_CALLER  ..> IF_REGISTRY : list_all()  ·  get()
+API_CALLER  ..> IF_REG_INIT : get_registry()
+
+' ══════════════════════════════════════════════
+' Connectors — registry → 내부 컴포넌트 (Assembly)
+' ══════════════════════════════════════════════
+REGISTRY ..> IF_MANIFEST : AgentManifest CRUD
+REGISTRY ..> IF_BASE     : _build_adapter() → BaseAdapter
+REGISTRY ..> IF_WATCHER  : AgentFileWatcher 등록
+
+' ══════════════════════════════════════════════
+' Connectors — executor → registry
+' ══════════════════════════════════════════════
+EXECUTOR ..> IF_REGISTRY : get_adapter(agent_id)
+
+' ══════════════════════════════════════════════
+' Connectors — 구체 어댑터 → 외부
+' ══════════════════════════════════════════════
+API_ADAPT  ..> HTTPX
+MCP_ADAPT  ..> MCP_PKG
+FILE_ADAPT ..> LLMS_PKG
+
+' ══════════════════════════════════════════════
+' Connectors — 외부 의존성
+' ══════════════════════════════════════════════
+REGISTRY ..> WATCHDOG
+REGISTRY ..> COMMON
+MANIFEST ..> COMMON
+EXECUTOR ..> COMMON
+
+' ══════════════════════════════════════════════
+' 범례
+' ══════════════════════════════════════════════
+legend right
+  표기 규칙 (UML 2.0 Component Diagram)
+  ════════════════════════════════════════
+  [  ] <<component>>   컴포넌트
+  () ─── [  ]          제공 인터페이스 (Lollipop)
+  [  ] ..> ()          사용 의존성 (Required → Provided)
+  () ─── [A]  [B]      A, B 모두 동일 인터페이스 제공 (다형성)
+  database             외부 시스템 / 파일
+endlegend
+
+@enduml

@@ -1,0 +1,144 @@
+@startuml intent_component_diagram
+
+skinparam defaultFontName  "Segoe UI"
+skinparam defaultFontSize  11
+skinparam componentStyle   rectangle
+skinparam wrapWidth        180
+
+skinparam component {
+    BackgroundColor #DBEAFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+    BorderThickness 2
+}
+skinparam interface {
+    BackgroundColor #D1FAE5
+    BorderColor     #059669
+    FontColor       #064E3B
+}
+skinparam package {
+    BackgroundColor #F8FAFC
+    BorderColor     #94A3B8
+    FontColor       #334155
+}
+skinparam database {
+    BackgroundColor #FEF3C7
+    BorderColor     #D97706
+    FontColor       #78350F
+}
+skinparam actor {
+    BackgroundColor #BFDBFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+}
+skinparam arrow {
+    Color     #64748B
+    FontColor #475569
+    FontSize  10
+}
+
+top to bottom direction
+
+title intent/ Component Diagram
+
+' ══════════════════════════════════════════════
+' 외부 호출자
+' ══════════════════════════════════════════════
+actor "core/\nanalyze_intent 노드" as CALLER
+
+' ══════════════════════════════════════════════
+' intent/ 패키지
+' ══════════════════════════════════════════════
+package "intent/" {
+
+    ' ── pipeline.py ───────────────────────────
+    () "run_pipeline()\n(Intent, tier)" as IF_PIPE
+
+    [pipeline.py\nOrchestrator] as PIPE <<component>>
+    PIPE -- IF_PIPE
+
+    ' ── 3-Tier 분석 컴포넌트 (같은 행) ────────
+    together {
+        () "match_rules()" as IF_RULE
+        [rule_filter.py\nTier 1 · Rule] as RULE <<component>>
+        RULE -- IF_RULE
+
+        () "match_from_store()" as IF_MATCH
+        [embedding_matcher.py\nTier 2 · Cache] as MATCH <<component>>
+        MATCH -- IF_MATCH
+
+        () "analyze_with_llm()" as IF_LLM
+        [llm_analyzer.py\nTier 3 · LLM] as LLMA <<component>>
+        LLMA -- IF_LLM
+    }
+
+    ' ── Store 컴포넌트 (같은 행) ───────────────
+    together {
+        () "get_intent_store()\nqdrant_enabled 분기" as IF_FACTORY
+
+        [cache.py\nStore Factory\nAsyncIntentCache · IntentCache] as CACHE <<component>>
+        CACHE -- IF_FACTORY
+
+        () "IntentStore\nadd()  ·  find_similar()" as IF_STORE
+
+        [qdrant_store.py\nVector Store\nAsyncQdrantClient] as QDRANTS <<component>>
+        CACHE   -- IF_STORE : file
+        QDRANTS -- IF_STORE : qdrant
+    }
+}
+
+' ══════════════════════════════════════════════
+' 외부 의존성
+' ══════════════════════════════════════════════
+together {
+    database "llms/\nLLMGateway\nembed()  ·  complete()" as LLM_GW
+    database "common/\nIntent  ·  Settings"              as COMMON
+    database "qdrant_client\nnumpy"                      as EXT_INFRA
+}
+
+' ══════════════════════════════════════════════
+' Connectors — 외부 호출자 → pipeline
+' ══════════════════════════════════════════════
+CALLER ..> IF_PIPE
+
+' ══════════════════════════════════════════════
+' Connectors — pipeline → Tier (Assembly)
+' ══════════════════════════════════════════════
+PIPE ..> IF_RULE    : Tier 1
+PIPE ..> IF_MATCH   : Tier 2
+PIPE ..> IF_LLM     : Tier 3
+
+' ══════════════════════════════════════════════
+' Connectors — pipeline·Tier2 → Store (Assembly)
+' ══════════════════════════════════════════════
+PIPE  ..> IF_FACTORY : get_intent_store()
+PIPE  ..> IF_STORE   : store.add()\nconfidence >= 0.7
+MATCH ..> IF_STORE   : find_similar(embedding)
+
+' ══════════════════════════════════════════════
+' Connectors — 외부 의존성
+' ══════════════════════════════════════════════
+MATCH   ..> LLM_GW  : embed(text)
+LLMA    ..> LLM_GW  : complete(intent_model)
+RULE    ..> COMMON
+MATCH   ..> COMMON
+LLMA    ..> COMMON
+CACHE   ..> COMMON
+CACHE   ..> EXT_INFRA
+QDRANTS ..> EXT_INFRA
+
+' ══════════════════════════════════════════════
+' 범례
+' ══════════════════════════════════════════════
+legend right
+  표기 규칙 (UML 2.0 Component Diagram)
+  ════════════════════════════════════════
+  [  ] <<component>>   컴포넌트
+  () ─── [  ]          제공 인터페이스 (Lollipop)
+  [  ] ..> ()          사용 의존성 (Required → Provided)
+  () ─── [A]           A 가 IF 를 제공
+  () ─── [B]           B 도 동일 IF 를 제공 (다형성)
+  database             외부 시스템
+endlegend
+
+@enduml

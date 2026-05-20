@@ -1,0 +1,154 @@
+@startuml core_component_diagram
+
+skinparam defaultFontName  "Segoe UI"
+skinparam defaultFontSize  11
+skinparam componentStyle   rectangle
+skinparam wrapWidth        180
+
+skinparam component {
+    BackgroundColor #DBEAFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+    BorderThickness 2
+}
+skinparam interface {
+    BackgroundColor #D1FAE5
+    BorderColor     #059669
+    FontColor       #064E3B
+}
+skinparam package {
+    BackgroundColor #F8FAFC
+    BorderColor     #94A3B8
+    FontColor       #334155
+}
+skinparam database {
+    BackgroundColor #FEF3C7
+    BorderColor     #D97706
+    FontColor       #78350F
+}
+skinparam actor {
+    BackgroundColor #BFDBFE
+    BorderColor     #2563EB
+    FontColor       #1E3A8A
+}
+skinparam arrow {
+    Color     #64748B
+    FontColor #475569
+    FontSize  10
+}
+
+top to bottom direction
+
+title core/ Component Diagram
+
+' ══════════════════════════════════════════════
+' 외부 호출자
+' ══════════════════════════════════════════════
+actor "streaming/\nrouter · sse" as CALLER
+
+' ══════════════════════════════════════════════
+' core/ 패키지
+' ══════════════════════════════════════════════
+package "core/" {
+
+    ' ── graph.py ──────────────────────────────
+    () "build_graph(checkpointer?)" as IF_BUILD
+    () "get_graph()\nset_graph(graph)"          as IF_GET_GRAPH
+
+    [graph.py\nLangGraph 그래프 조립\n_wrap_node()  ·  _should_continue()\nhandle_error()] as GRAPH <<component>>
+
+    GRAPH -- IF_BUILD
+    GRAPH -- IF_GET_GRAPH
+
+    ' ── nodes/ (같은 행) ──────────────────────
+    together {
+        () "analyze_intent(state)" as IF_ANALYZE
+        [nodes/intent_analyzer.py\nTier 의도 분석\nHITL interrupt()] as N_INTENT <<component>>
+        N_INTENT -- IF_ANALYZE
+
+        () "plan_tasks(state)" as IF_PLAN
+        [nodes/task_planner.py\nLLM → JSON TaskPlan\nAgentRegistry 조회] as N_PLAN <<component>>
+        N_PLAN -- IF_PLAN
+
+        () "execute_tasks(state)" as IF_EXEC
+        [nodes/task_executor.py\n태스크 순차 실행\nHITL interrupt()  ·  최종 답변 생성] as N_EXEC <<component>>
+        N_EXEC -- IF_EXEC
+    }
+
+    ' ── 지원 컴포넌트 (같은 행) ───────────────
+    together {
+        () "OrchestratorState\n(TypedDict)" as IF_STATE
+        [state.py\nuser_input  ·  session_id\nintent  ·  plan\ncompleted_tasks  ·  stream_events] as STATE <<component>>
+        STATE -- IF_STATE
+
+        () "safe_parse_json()\nextract_json()\ninvoke_llm()" as IF_UTILS
+        [utils.py\nLLM 응답 JSON 파싱\n공통 LLM 호출 헬퍼] as UTILS <<component>>
+        UTILS -- IF_UTILS
+    }
+}
+
+' ══════════════════════════════════════════════
+' 외부 의존성
+' ══════════════════════════════════════════════
+together {
+    database "LangGraph\nStateGraph  ·  END\nMemorySaver / AsyncRedisSaver\ninterrupt()  ·  Command" as LANGGRAPH
+    database "intent/\nrun_pipeline()"                                                               as INTENT_PKG
+}
+together {
+    database "agents/\nAgentRegistry  ·  AgentExecutor" as AGENTS_PKG
+    database "llms/\nget_gateway()  ·  LLMGateway"      as LLMS_PKG
+}
+database "common/\nSettings  ·  schemas\nStreamEvent  ·  HITLPayload\nIntent  ·  Task  ·  TaskPlan" as COMMON
+
+' ══════════════════════════════════════════════
+' Connectors — 외부 호출자 → graph
+' ══════════════════════════════════════════════
+CALLER ..> IF_GET_GRAPH : get_graph()\nastream() · ainvoke()
+
+' ══════════════════════════════════════════════
+' Connectors — graph → nodes (Assembly)
+' ══════════════════════════════════════════════
+GRAPH ..> IF_ANALYZE  : add_node("analyze_intent")
+GRAPH ..> IF_PLAN     : add_node("plan_tasks")
+GRAPH ..> IF_EXEC     : add_node("execute_tasks")
+GRAPH ..> IF_STATE    : StateGraph(OrchestratorState)
+GRAPH ..> LANGGRAPH   : StateGraph · compile(checkpointer)
+
+' ══════════════════════════════════════════════
+' Connectors — nodes → 지원 컴포넌트
+' ══════════════════════════════════════════════
+N_INTENT ..> IF_STATE
+N_PLAN   ..> IF_STATE
+N_EXEC   ..> IF_STATE
+N_PLAN   ..> IF_UTILS : safe_parse_json()
+
+' ══════════════════════════════════════════════
+' Connectors — nodes → 외부 의존성
+' ══════════════════════════════════════════════
+N_INTENT ..> INTENT_PKG  : run_pipeline(user_input, settings)
+N_INTENT ..> LANGGRAPH   : interrupt() HITL
+N_PLAN   ..> LLMS_PKG    : complete(planner_model)
+N_PLAN   ..> AGENTS_PKG  : list_enabled()
+N_EXEC   ..> LLMS_PKG    : complete(executor_model)
+N_EXEC   ..> AGENTS_PKG  : get(agent_id) · AgentExecutor.execute()
+N_EXEC   ..> LANGGRAPH   : interrupt() HITL
+
+N_INTENT ..> COMMON
+N_PLAN   ..> COMMON
+N_EXEC   ..> COMMON
+GRAPH    ..> COMMON
+STATE    ..> COMMON
+
+' ══════════════════════════════════════════════
+' 범례
+' ══════════════════════════════════════════════
+legend right
+  표기 규칙 (UML 2.0 Component Diagram)
+  ════════════════════════════════════════
+  [  ] <<component>>   컴포넌트
+  () ─── [  ]          제공 인터페이스 (Lollipop)
+  [  ] ..> ()          사용 의존성 (Required → Provided)
+  database             외부 시스템 / 패키지
+endlegend
+
+@enduml

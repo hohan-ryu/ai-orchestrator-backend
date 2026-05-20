@@ -17,6 +17,24 @@
       "timeout": 60,
       "max_retries": 1,
       "tags": []
+    },
+    {
+      "id": "my-gemini",
+      "name": "google gemini",
+      "description": "",
+      "adapter": "google",
+      "capability": "completion",
+      "enabled": true,
+      "priority": 0,
+      "is_fallback": false,
+      "base_url": "",
+      "api_key": "AIzaSyBStl4lJYP_XUN9P9061SdRyQVJahIAr-U",
+      "model": "gemini-2.5-flash",
+      "embedding_model": "",
+      "temperature": 0.0,
+      "timeout": 60,
+      "max_retries": 1,
+      "tags": []
     }
   ]
 }
